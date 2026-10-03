@@ -11,13 +11,14 @@ import {
 import { AnalysisSummary, ConnectionNotice, NewsGuardCard, SourceHealth } from './TerminalPanels';
 import SymbolDetail from './SymbolDetail';
 import { TradeCallHistory, TradeDeskDetail, TradeDeskList } from './TradeDesk';
+import TradingWorkspace from './TradingWorkspace';
 import type {
   AlertItem, CalendarEvent, HealthPayload, MarketRecord, SignalEvent, Stats24h, TradeAnalysis, TradeCall,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_VERTEX_API_URL || 'http://localhost:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
-type Tab = 'overview' | 'markets' | 'desk' | 'risk' | 'alerts' | 'signals' | 'calendar' | 'sources';
+type Tab = 'overview' | 'markets' | 'desk' | 'risk' | 'alerts' | 'signals' | 'calendar' | 'sources' | 'browser';
 type Candle = { time: number; open: number; high: number; low: number; close: number };
 
 async function safeJson<T>(url: string): Promise<T | null> {
@@ -58,6 +59,11 @@ export default function Dashboard() {
   const [records, setRecords] = useState<MarketRecord[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [chartRange, setChartRange] = useState('1y');
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartPartial, setChartPartial] = useState(false);
+  const [chartStale, setChartStale] = useState(false);
+  const [chartInterval, setChartInterval] = useState('1d');
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [signalEvents, setSignalEvents] = useState<SignalEvent[]>([]);
   const [stats, setStats] = useState<Stats24h | null>(null);
@@ -172,16 +178,27 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!selected || selectedRecord?.data_available === false) {
+    if (!selected) {
       setCandles([]);
       return;
     }
     let cancelled = false;
     setCandles([]);
-    safeJson<{ candles: Candle[] }>(API_BASE + '/api/market/' + encodeURIComponent(selected) + '?limit=200')
-      .then((data) => { if (!cancelled) setCandles(data?.candles || []); });
-    return () => { cancelled = true; };
-  }, [selected, selectedRecord?.data_available]);
+    setChartLoading(true);
+    async function loadChart() {
+      const data = await safeJson<{ candles: Candle[]; partial_history: boolean; interval: string; stale: boolean }>(API_BASE + '/api/chart/' + encodeURIComponent(selected!) + '?range=' + chartRange);
+      if (!cancelled) {
+        setCandles(data?.candles || []);
+        setChartPartial(data?.partial_history || false);
+        setChartStale(data?.stale || false);
+        setChartInterval(data?.interval || '—');
+        setChartLoading(false);
+      }
+    }
+    loadChart();
+    const timer = setInterval(loadChart, 60000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [selected, chartRange]);
 
   const chooseSymbol = (symbol: string) => {
     setSelected(symbol);
@@ -195,6 +212,7 @@ export default function Dashboard() {
     { label: t.terminal, icon: LayoutDashboard, key: 'overview' },
     { label: t.markets, icon: BarChart3, key: 'markets' },
     { label: t.tradeDesk, icon: BrainCircuit, key: 'desk' },
+    { label: t.tradingBrowser, icon: Globe2, key: 'browser' },
     { label: t.riskHeatmap, icon: Gauge, key: 'risk' },
     { label: t.alerts, icon: Bell, key: 'alerts' },
     { label: t.signals, icon: ListOrdered, key: 'signals' },
@@ -272,7 +290,7 @@ export default function Dashboard() {
               </div>
               <div className="vx-terminal-grid">
                 <div className="vx-chart-column">
-                  <SymbolDetail record={selectedRecord} candles={candles} t={t} />
+                  <SymbolDetail record={selectedRecord} candles={candles} t={t} range={chartRange} onRangeChange={setChartRange} loading={chartLoading} partial={chartPartial} interval={chartInterval} stale={chartStale} />
                 </div>
                 <div className="vx-rail">
                   <AnalysisSummary analysis={selectedAnalysis} record={selectedRecord} t={t} onOpenDesk={() => { setDeskSymbol(selected); chooseTab('desk'); }} />
@@ -289,8 +307,11 @@ export default function Dashboard() {
 
           {tab === 'markets' && (
             <div className="vx-content-grid">
-              <WatchlistGrid records={filteredRecords} selected={selected} onSelect={chooseSymbol} t={t} />
-              <SymbolDetail record={selectedRecord} candles={candles} t={t} />
+              <div>
+                <p className="mb-3 text-xs leading-5 text-[#95afc0]">{health?.crypto_universe?.mode === 'MARKET_CAP_SUPPORTED' ? t.rankedUniverse : t.fallbackUniverse}{health?.crypto_universe?.as_of ? ' · ' + new Date(health.crypto_universe.as_of).toLocaleDateString() : ''}</p>
+                <WatchlistGrid records={filteredRecords} selected={selected} onSelect={chooseSymbol} t={t} />
+              </div>
+              <SymbolDetail record={selectedRecord} candles={candles} t={t} range={chartRange} onRangeChange={setChartRange} loading={chartLoading} partial={chartPartial} interval={chartInterval} stale={chartStale} />
             </div>
           )}
           {tab === 'desk' && (
@@ -317,6 +338,7 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+          {tab === 'browser' && <TradingWorkspace records={records} selected={selected} onSelect={chooseSymbol} analysis={selectedAnalysis} t={t} />}
         </main>
         <footer className="vx-footer"><AlertTriangle size={14} /><span>{t.disclaimer}</span></footer>
       </div>

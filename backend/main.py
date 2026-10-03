@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
+import os
+from dataclasses import replace
 import time
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from alerts.alert_engine import AlertEngine
@@ -17,6 +19,8 @@ from news_calendar import EconomicCalendarService
 from providers.market_data import MarketDataHub, classify_symbol
 from scheduler import MarketMonitor
 from storage.db import VertexStore
+from chart_history import RANGES, chart_payload
+from providers.crypto_universe import resolve_universe
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("VertexAPI")
@@ -36,6 +40,7 @@ notifier = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_
 alert_engine = AlertEngine(store, notifier)
 trade_analyst = TradeAnalyst(confluence)
 monitor = MarketMonitor(settings, market_data, confluence, risk_engine, calendar_service, alert_engine, trade_analyst)
+crypto_universe = {"mode": "CONFIGURED_FALLBACK", "items": []}
 
 app = FastAPI(
     title=f"{settings.brand_name} Market Intelligence API",
@@ -54,6 +59,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
+    global settings, crypto_universe
+    if not os.getenv("VERTEX_CRYPTO_WATCHLIST"):
+        symbols, crypto_universe = await asyncio.to_thread(resolve_universe, settings.crypto_watchlist)
+        settings = replace(settings, crypto_watchlist=symbols)
+        monitor.settings = settings
+        market_data.watchlist = symbols + list(settings.forex_watchlist)
+    else:
+        crypto_universe = {"mode": "CONFIGURED", "items": [{"symbol": symbol} for symbol in settings.crypto_watchlist]}
     monitor.start(store)
 
 
@@ -83,6 +96,7 @@ async def health_check():
         "news_guard": calendar_service.status(),
         "telegram_configured": notifier.configured,
         "research_storage": store.research_readiness()["storage"],
+        "crypto_universe": crypto_universe,
         "disclaimer": _disclaimer(),
     }
 
@@ -90,6 +104,7 @@ async def health_check():
 @app.get("/api/watchlist")
 async def watchlist():
     return {
+        "crypto_universe": crypto_universe,
         "symbols": [
             {"symbol": symbol, "asset_class": classify_symbol(symbol)}
             for symbol in market_data.watchlist
@@ -122,6 +137,16 @@ async def market_detail(symbol: str, limit: int = 200):
         for row in df.itertuples(index=False)
     ]
     return {**record, "candles": candles, "disclaimer": _disclaimer()}
+
+
+@app.get("/api/chart/{symbol}")
+async def chart_history(symbol: str, range_key: str = Query("1y", alias="range")):
+    symbol = symbol.upper().strip()
+    if symbol not in market_data.watchlist:
+        raise HTTPException(status_code=404, detail="Symbol is not on the watchlist.")
+    if range_key not in RANGES:
+        raise HTTPException(status_code=422, detail="Unsupported chart range.")
+    return await asyncio.to_thread(chart_payload, symbol, range_key, market_data)
 
 
 @app.get("/api/risk/heatmap")

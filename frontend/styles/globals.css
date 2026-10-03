@@ -140,7 +140,11 @@ html[dir="rtl"] .vx-nav-active { box-shadow: inset -3px 0 var(--vx-blue); }
 .vx-chart-price { display: flex; flex-direction: column; align-items: end; gap: 2px; white-space: nowrap; }
 .vx-chart-price strong { color: #f7fcff; font-size: 17px; }
 .vx-chart-price span { font-size: 11px; }
-.vx-chart-toolbar { display: flex; align-items: center; gap: 12px; min-height: 43px; padding: 0 17px; border-bottom: 1px solid #193347; color: #95afc0; font-size: 11px; }
+.vx-chart-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 43px; padding: 8px 17px; border-bottom: 1px solid #193347; color: #95afc0; font-size: 11px; }
+.vx-chart-ranges { display: flex; align-items: center; gap: 5px; }
+.vx-chart-ranges button { padding: 5px 8px; }
+.vx-trading-workspace { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 1000px) { .vx-trading-workspace { grid-template-columns: 1fr; } }
 .vx-toolbar-label, .vx-toolbar-updated { display: inline-flex; align-items: center; gap: 5px; }
 .vx-toolbar-label svg { color: var(--vx-mint); }
 .vx-timeframe { padding: 5px 8px; border-radius: 5px; background: #17344d; color: #cbe7ff; font-size: 11px; font-weight: 700; }

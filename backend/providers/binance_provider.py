@@ -43,7 +43,7 @@ class BinanceProvider:
         cache_key = (symbol, interval, limit)
         with self._lock:
             cached = self._kline_cache.get(cache_key)
-            if cached and time.time() - cached[0] < self.cache_seconds:
+            if cached and time.time() - cached[0] < max(self.cache_seconds, 300 if interval == "1d" else 30):
                 return cached[1].copy()
 
         try:

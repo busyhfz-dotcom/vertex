@@ -8,12 +8,13 @@ import { formatPct, formatPrice, riskColor } from './panels';
 type Candle = { time: number; open: number; high: number; low: number; close: number };
 
 export default function SymbolDetail({
-  record, candles, t,
-}: { record: MarketRecord | null; candles: Candle[]; t: Dictionary }) {
+  record, candles, t, range, onRangeChange, loading, partial, interval, stale,
+}: { record: MarketRecord | null; candles: Candle[]; t: Dictionary; range: string; onRangeChange: (range: string) => void; loading: boolean; partial: boolean; interval: string; stale: boolean }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLinesRef = useRef<any[]>([]);
+  const fittedContext = useRef('');
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -47,9 +48,14 @@ export default function SymbolDetail({
 
   useEffect(() => {
     if (!seriesRef.current) return;
-    seriesRef.current.setData(record?.data_available ? candles as any : []);
-    if (candles.length && record?.data_available) chartRef.current?.timeScale().fitContent();
-  }, [candles, record?.data_available]);
+    seriesRef.current.setData(candles as any);
+    const context = `${record?.symbol}:${range}`;
+    chartRef.current?.applyOptions({ timeScale: { timeVisible: interval !== '1d' } });
+    if (candles.length && fittedContext.current !== context) {
+      chartRef.current?.timeScale().fitContent();
+      fittedContext.current = context;
+    }
+  }, [candles, record?.symbol, range, interval]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -93,20 +99,25 @@ export default function SymbolDetail({
       </div>
       <div className="vx-chart-toolbar">
         <span className="vx-toolbar-label"><Activity size={14} />{available ? t.dataHealthy : t.dataUnavailable}</span>
-        <span className="vx-timeframe">15m</span>
+        <div className="vx-chart-ranges" aria-label={t.chartRange}>
+          {['1d', '1w', '1m', '3m', '6m', '1y'].map((option) => <button type="button" key={option} onClick={() => onRangeChange(option)} aria-pressed={range === option} className={range === option ? 'vx-timeframe' : 'vx-muted'}>{option.toUpperCase()}</button>)}
+        </div>
+        <span>{t.candleInterval}: {interval}</span>
         <span className="vx-toolbar-source">{record?.source || '—'}</span>
         <span className="vx-toolbar-updated"><Clock3 size={13} />{t.updatedAt} {time}</span>
       </div>
       <div className="vx-chart-stage">
         <div ref={canvasRef} className="vx-chart-canvas" />
-        {(!available || candles.length === 0) && (
+        {(loading || candles.length === 0) && (
           <div className="vx-chart-overlay">
             <span className="vx-chart-empty-icon"><TrendingUp size={25} /></span>
-            <strong>{!available ? t.noMarketData : t.chartUnavailable}</strong>
+            <strong>{loading ? t.loadingHistory : t.chartUnavailable}</strong>
             <span>{t.chartUnavailable}</span>
           </div>
         )}
       </div>
+      {candles.length > 0 && <p className="px-4 py-2 text-xs text-[#95afc0]">{new Date(candles[0].time * 1000).toLocaleDateString()} — {new Date(candles[candles.length - 1].time * 1000).toLocaleDateString()}{partial ? ' · ' + t.partialHistory : ''}</p>}
+      {stale && <p className="px-4 py-2 text-xs text-amber-300">{t.staleHistory}</p>}
       <div className="vx-chart-metrics">
         <div><span>{t.risk}</span><strong className={'vx-mono ' + risk.text}>{available ? (record?.risk?.risk_score ?? '—') + '/100' : '—'}</strong></div>
         <div><span>{t.volatility}</span><strong>{available ? record?.risk?.volatility_state || '—' : '—'}</strong></div>

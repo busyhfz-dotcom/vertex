@@ -161,6 +161,7 @@ export type TradeCall = {
 };
 
 export type HealthPayload = {
+  crypto_universe?: { mode: string; source?: string; as_of?: string; items: { symbol: string; name?: string; market_cap_rank?: number }[] };
   status: string;
   brand: string;
   version: string;

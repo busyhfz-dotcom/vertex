@@ -28,6 +28,25 @@ every analysis carries this same disclaimer.
 
 ## Architecture
 
+Charts default to one year of real daily candles. Range controls provide 1D,
+1W, 1M, 3M, 6M and 1Y; `/api/chart/{symbol}?range=1y` fetches bounded provider
+history separately from the short-term analysis inputs. Newly listed markets
+show their actual available coverage, and unavailable history stays empty.
+
+At startup, the default crypto universe selects the first 30 CoinGecko
+market-cap-ranked assets with a currently trading Binance spot USDT pair.
+This excludes unsupported assets and the USDT quote currency itself. Ranking
+source and timestamp are exposed in health/watchlist; ranking failure uses an
+explicitly labelled configured fallback. `VERTEX_CRYPTO_WATCHLIST` overrides
+this selection. Rankings are a startup snapshot, not continuously refreshed.
+
+The Trading Browser keeps the selected market's Trade Desk beside a user-entered
+HTTPS website. Binance spot links are provided per crypto symbol. Sites may
+block embedding or embedded login using CSP/X-Frame-Options; the separate-window
+link remains available. This is an iframe workspace, not a full browser engine.
+VERTEX stores no exchange credentials and does not submit orders. Users sign in
+and trade directly with their chosen exchange.
+
 ```
 backend/   FastAPI. Binance public API for crypto (live, no key needed).
            Pluggable forex/metals provider (Twelve Data, free key) that
